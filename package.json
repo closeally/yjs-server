@@ -1,15 +1,40 @@
 {
   "name": "yjs-server",
-  "private": false,
   "version": "0.0.2-1",
+  "description": "An extensible websocket server for the Yjs collaborative editing framework. Compatible with y-websocket.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/closeally/yjs-server.git"
+  },
+  "homepage": "https://github.com/closeally/yjs-server#readme",
+  "author": "Luis Hernandez <luis.hernandez@closeally.com>",
+  "keywords": [
+    "yjs",
+    "y-websocket",
+    "CRDT",
+    "offline",
+    "offline-first",
+    "shared-editing",
+    "concurrency",
+    "collaboration"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/closeally/yjs-server/issues"
+  },
   "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./dist/index.js"
+  },
   "packageManager": "pnpm@7.14.0",
-  "exports": "./dist/index.js",
   "engines": {
     "node": ">=14.16"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
