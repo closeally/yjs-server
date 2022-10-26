@@ -1,0 +1,58 @@
+{
+  "name": "yjs-server",
+  "private": false,
+  "version": "0.0.1",
+  "type": "module",
+  "packageManager": "pnpm@7.14.0",
+  "exports": "./dist/index.js",
+  "engines": {
+    "node": ">=14.16"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "validate": "run-p lint typecheck test:run format:check",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "fix": "pnpm lint --fix && pnpm format",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "lib0": "^0.2",
+    "y-protocols": "^1.0.5",
+    "yjs": "^13.5.42"
+  },
+  "devDependencies": {
+    "@types/node": "^18.11.5",
+    "@types/ws": "^8.5.3",
+    "@typescript-eslint/eslint-plugin": "^5.41.0",
+    "@vitest/coverage-c8": "^0.24.3",
+    "eslint": "^8.26.0",
+    "eslint-config-prettier": "^8.5.0",
+    "lib0": "^0.2.52",
+    "nodemon": "^2.0.20",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^2.7.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.8.4",
+    "vite": "^3.1.8",
+    "vitest": "^0.24.3",
+    "wait-for-expect": "^3.0.2",
+    "ws": "^8.10.0",
+    "y-protocols": "^1.0.5",
+    "y-websocket": "^1.4.5",
+    "yjs": "^13.5.42"
+  },
+  "prettier": {
+    "singleQuote": true,
+    "printWidth": 100,
+    "semi": false,
+    "trailingComma": "all"
+  }
+}
