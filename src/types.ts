@@ -8,6 +8,14 @@ export interface Logger {
   warn: LogFn
 }
 
+export interface MessageEvent {
+  data: WebsSocketData
+}
+
+export interface CloseEvent {
+  code: number
+}
+
 export interface IWebSocket {
   binaryType: 'arraybuffer' | string
 
@@ -18,8 +26,12 @@ export interface IWebSocket {
   terminate(): void
 
   on(event: 'pong', listener: () => void): void
-  on(event: 'close', listener: (code: number) => void): void
-  on(event: 'message', listener: (data: Buffer | ArrayBuffer | Buffer[]) => void): void
+
+  addEventListener(event: 'close', listener: (event: CloseEvent) => void): void
+  addEventListener(event: 'message', listener: (event: MessageEvent) => void): void
+
+  removeEventListener(method: 'message', cb: (event: MessageEvent) => void): void
+  removeEventListener(method: 'close', cb: (event: CloseEvent) => void): void
 }
 
 export interface IRequest {
@@ -29,7 +41,7 @@ export interface IRequest {
 export type WebsSocketData = string | Buffer | ArrayBuffer | Buffer[]
 
 export interface YjsServer<WS extends IWebSocket = IWebSocket, Req extends IRequest = IRequest> {
-  handleConnection(conn: WS, req: Req): void
+  handleConnection(conn: WS, req: Req, shouldConnect?: Promise<boolean>): Promise<void>
   close(code: number): void
 }
 

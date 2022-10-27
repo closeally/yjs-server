@@ -33,8 +33,11 @@ function scenario() {
 
   const makeServer = (opts?: Partial<CreateServerOptions>) => {
     const server = createServer({ logger, createDoc: () => new Y.Doc(), ...opts })
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    wss.on('connection', server.handleConnection)
+
+    wss.on('connection', (ws, req) => {
+      void server.handleConnection(ws, req)
+    })
+
     return server
   }
 

@@ -13,23 +13,19 @@ export const makeRoom = (
   docStorage: DocStorage | undefined,
   logger: Logger,
 ) => {
-  const room = new Room(name, yDoc, docStorage, logger)
+  const loadPromise =
+    docStorage
+      ?.loadDoc(name, yDoc)
+      .then(() => true)
+      .catch((err: unknown) => {
+        logger.error(
+          { name, err },
+          'loadDoc failed, connections waiting for the doc to load will be closed',
+        )
+        return false
+      }) ?? Promise.resolve(true)
 
-  const docLoader = docStorage?.loadDoc
-
-  // load an existing document from persistent storage
-  const loadDoc = docLoader
-    ? () =>
-        docLoader(name, room.yDoc)
-          .then(() => true)
-          .catch((err: unknown) => {
-            // room.connections.size should be 0
-            logger.error({ name, err }, 'error loading Y.Doc, closing all connections')
-            return false
-          })
-    : undefined
-
-  return [room, loadDoc] as const
+  return new Room(name, yDoc, loadPromise, docStorage, logger)
 }
 
 export class Room {
@@ -43,6 +39,7 @@ export class Room {
   constructor(
     public readonly name: string,
     public readonly yDoc: Doc,
+    public readonly loadPromise: Promise<boolean>,
     private readonly docStorage: DocStorage | undefined,
     private readonly logger: Logger,
   ) {

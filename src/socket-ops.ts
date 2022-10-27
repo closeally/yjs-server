@@ -34,7 +34,7 @@ export const keepAlive = (conn: IWebSocket, pingTimeout: number, logger: Logger)
     isAlive = true
   })
 
-  conn.on('close', () => {
+  conn.addEventListener('close', () => {
     clearInterval(pingInterval)
   })
 }

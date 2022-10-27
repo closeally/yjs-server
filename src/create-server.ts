@@ -1,12 +1,5 @@
 import { YjsServerError } from './error.js'
-import type {
-  DocStorage,
-  IRequest,
-  IWebSocket,
-  Logger,
-  WebsSocketData,
-  YjsServer,
-} from './types.js'
+import type { DocStorage, IRequest, IWebSocket, Logger, MessageEvent, YjsServer } from './types.js'
 import { CloseReason } from './types.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
@@ -15,20 +8,22 @@ import { applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awarene
 import type { Room } from './Room.js'
 import { makeRoom } from './Room.js'
 import { keepAlive, send } from './socket-ops.js'
-import { CLOSED, CLOSING, MessageType, OPEN } from './internal.js'
+import { CLOSED, CLOSING, MessageType } from './internal.js'
 import type { Doc } from 'yjs'
 
 export const defaultDocNameFromRequest = <Req extends IRequest>(req: Req) => {
   return req.url?.slice(1).split('?')[0]
 }
 
-export interface CreateServerOptions<WS extends IWebSocket = IWebSocket> {
+export interface CreateServerOptions {
   createDoc: () => Doc
   logger?: Logger
   docNameFromRequest?: typeof defaultDocNameFromRequest
   docStorage?: DocStorage
   rooms?: Map<string, Room>
   pingTimeout?: number
+  maxBufferedBytes?: number
+  maxBufferedBytesBeforeConnect?: number
 }
 
 export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRequest = IRequest>({
@@ -38,14 +33,39 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
   docNameFromRequest = defaultDocNameFromRequest,
   rooms = new Map(),
   pingTimeout = 30000,
-}: CreateServerOptions<WS>): YjsServer<WS, Req> => {
+  maxBufferedBytesBeforeConnect = 1024 * 10,
+  maxBufferedBytes = 1024 * 100,
+}: CreateServerOptions): YjsServer<WS, Req> => {
   let isClosed = false
   const alwaysConnect = Promise.resolve(true)
 
-  // note: all handlers need to be attached to the socket ASAP, otherwise we might miss events
-  // this complicates the code a bit, but it's necessary due to how the y-websocket client works
-  const handleConnection = (conn: WS, req: Req, shouldConnect = alwaysConnect) => {
-    if (isClosed || conn.readyState === CLOSING || conn.readyState === CLOSED) return
+  const handleConnection = async (conn: WS, req: Req, shouldConnect = alwaysConnect) => {
+    if (isClosed) return
+
+    if (conn.readyState === CLOSING || conn.readyState === CLOSED) {
+      logger.warn({ req, readyState: conn }, 'received a socket that is already closing or closed')
+      return
+    }
+
+    const bufferedMessages = new Array<ArrayBuffer>()
+    try {
+      conn.binaryType = 'arraybuffer'
+
+      // note: no async code should happen between bufferUntilReady calls, or we may lose messages
+      const shouldContinue = await bufferUntilReady(
+        conn,
+        bufferedMessages,
+        maxBufferedBytesBeforeConnect,
+        shouldConnect,
+        req,
+      )
+
+      // shouldConnect parent should close the connection with the appropriate error code
+      if (!shouldContinue) return
+    } catch (err) {
+      logger.error({ req, err }, 'error handling new connection')
+      conn.terminate()
+    }
 
     try {
       const docName = docNameFromRequest(req)
@@ -56,76 +76,112 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
         return
       }
 
-      conn.binaryType = 'arraybuffer'
+      const room = getOrCreateRoom(docName)
 
-      const [room, loadDoc] = getOrCreateRoom(docName)
+      const shouldContinue = await bufferUntilReady(
+        conn,
+        bufferedMessages,
+        maxBufferedBytes,
+        room.loadPromise,
+        req,
+      )
 
-      const readyPromise = loadDoc
-        ? // only load the room after shouldConnect resolves, if the connection is dropped, the room
-          // won't load, avoiding a potential DoS vector
-          // if the connection is dropped, the room will be cleaned up by the close handler
-          whenReady(conn, shouldConnect, loadDoc)
-        : shouldConnect
+      // room failed to load or the socket was closed
+      if (!shouldContinue) {
+        conn.close(CloseReason.INTERNAL_ERROR)
+        return
+      }
 
-      setupNewConnection(room, conn, readyPromise)
+      const handleMessage = setupNewConnection(room, conn)
+
+      // replay buffered messages
+      bufferedMessages.forEach((data) => handleMessage({ data }))
     } catch (err) {
       logger.error({ req, err }, 'error handling new connection')
       conn.close(CloseReason.INTERNAL_ERROR)
     }
   }
 
-  const setupNewConnection = (room: Room, conn: WS, readyPromise: Promise<boolean>) => {
-    // setup close handler and keep alive ASAP, these don't depend on auth or doc loading
-    conn.on('close', () => {
+  const bufferUntilReady = async (
+    conn: WS,
+    messages: ArrayBuffer[],
+    maxSize: number,
+    whenReady: Promise<boolean>,
+    req: Req,
+  ) => {
+    let size = messages.reduce((acc, msg) => acc + msg.byteLength, 0)
+
+    const onMessage = ({ data }: MessageEvent) => {
+      if (data instanceof ArrayBuffer) {
+        size += data.byteLength
+
+        if (size <= maxSize) {
+          messages.push(data)
+        } else {
+          logger.warn({ req, size, maxSize }, 'message buffer exceeded maxSize')
+          conn.terminate()
+        }
+      } else {
+        logger.warn({ req }, 'received a non-arraybuffer message')
+        conn.terminate()
+      }
+    }
+    conn.addEventListener('message', onMessage)
+
+    let removeCloseListener: (() => void) | undefined
+    const connectionClosed = new Promise<false>((resolve) => {
+      const onClose = () => resolve(false)
+      conn.addEventListener('close', onClose)
+      removeCloseListener = () => conn.removeEventListener('close', onClose)
+    })
+
+    try {
+      return await Promise.race([connectionClosed, whenReady])
+    } finally {
+      removeCloseListener?.()
+      conn.removeEventListener('message', onMessage)
+    }
+  }
+
+  const setupNewConnection = (room: Room, conn: WS) => {
+    room.addConnection(conn)
+
+    conn.addEventListener('close', () => {
       handleClose(conn, room)
     })
 
+    const handleMessage = ({ data }: MessageEvent) => {
+      try {
+        handleMessageImpl(conn, room, new Uint8Array(data as ArrayBuffer))
+      } catch (err) {
+        logger.error({ err }, 'error handling message')
+        conn.close(CloseReason.UNSUPPORTED)
+      }
+    }
+    conn.addEventListener('message', handleMessage)
+
     keepAlive(conn, pingTimeout, logger)
 
-    // even if the authorization is still in progress, we need to listen for messages ASAP
-    // the y-websocket library will send a sync step 1 message immediately after connecting
-    conn.on('message', (message: WebsSocketData) => {
-      // multiple messages will be enqueued by the js runtime until the readyPromise resolves
-      // note: accumulating too many unauthorized messages could be a potential DoS vector
-      void whenReady(conn, readyPromise, () => {
-        try {
-          handleMessage(conn, room, new Uint8Array(message as ArrayBuffer))
-        } catch (err) {
-          logger.error({ err }, 'error handling message')
-          conn.close(CloseReason.UNSUPPORTED)
-        }
-      })
-      // if the connection is dropped, the messages will be discarded
-    })
+    sendSyncStepOne(conn, room)
 
-    void whenReady(conn, readyPromise, () => {
-      // don't add the connection right away, or the connection could receive messages before it's authorized
-      room.addConnection(conn)
-
-      // besides auth, make sure contents of the doc had been loaded from docStorage
-      // this ensures the initial sync the client receive is up-to-date, avoiding intermediate states
-      sendSyncStepOne(conn, room)
-    })
-    // if the connection is dropped, there is nothing to clean up
+    return handleMessage
   }
 
   const getOrCreateRoom = (name: string) => {
     const existing = rooms.get(name)
 
-    if (existing) return [existing, undefined] as const
+    if (existing) return existing
 
-    const [room, loadDoc] = makeRoom(name, createDoc(), docStorage, logger)
+    const room = makeRoom(name, createDoc(), docStorage, logger)
 
     rooms.set(name, room)
 
-    return [room, loadDoc] as const
+    return room
   }
 
   const handleClose = (conn: WS, room: Room): void => {
-    // connection might not be on the room if it was dropped before shouldConnect/docLoad
     room.removeConnection(conn)
 
-    // still, if the room just loaded and the connection dropped, we need to clean up
     if (room.numConnections === 0) {
       rooms.delete(room.name)
       room.destroy()
@@ -157,18 +213,6 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
     }
   }
 
-  const whenReady = async <T>(
-    conn: WS,
-    promise: Promise<boolean>,
-    next: () => T,
-  ): Promise<boolean | Awaited<T>> => {
-    const shouldContinue = await promise
-
-    if (!shouldContinue || isClosed || conn.readyState !== OPEN) return false
-
-    return next() as Awaited<T>
-  }
-
   return {
     handleConnection,
     close,
@@ -194,7 +238,7 @@ const sendSyncStepOne = (conn: IWebSocket, room: Room) => {
   }
 }
 
-const handleMessage = (conn: IWebSocket, doc: Room, message: Uint8Array) => {
+const handleMessageImpl = (conn: IWebSocket, doc: Room, message: Uint8Array) => {
   const encoder = encoding.createEncoder()
   const decoder = decoding.createDecoder(message)
   const messageType = decoding.readVarUint(decoder)
