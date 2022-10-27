@@ -32,7 +32,8 @@ function scenario() {
   }
 
   const makeServer = (opts?: Partial<CreateServerOptions>) => {
-    const server = createServer({ logger, ...opts })
+    const server = createServer({ logger, createDoc: () => new Y.Doc(), ...opts })
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     wss.on('connection', server.handleConnection)
     return server
   }
@@ -97,7 +98,6 @@ describe.concurrent('server', () => {
     })
 
     client.disconnect()
-
     await waitForExpect(() => {
       expect(client.wsconnected).toBe(false)
     })
@@ -129,7 +129,7 @@ describe.concurrent('server', () => {
     const doc1 = new Y.Doc()
     const doc2 = new Y.Doc()
 
-    await waitForAllConnected([makeClient(doc1), makeClient(doc2)])
+    await waitForAllSynced([makeClient(doc1), makeClient(doc2)])
 
     doc1.getMap('root').set('foo', 'bar')
 
@@ -148,7 +148,7 @@ describe.concurrent('server', () => {
     const doc3 = new Y.Doc()
     const doc4 = new Y.Doc()
 
-    await waitForAllConnected([
+    await waitForAllSynced([
       makeClient(doc1, 'room1'),
       makeClient(doc2, 'room1'),
       makeClient(doc3, 'room2'),
@@ -177,7 +177,7 @@ describe.concurrent('server', () => {
     const awareness1 = new Awareness(doc1)
     const awareness2 = new Awareness(doc2)
 
-    await waitForAllConnected([
+    await waitForAllSynced([
       makeClient(doc1, 'room1', { awareness: awareness1 }),
       makeClient(doc2, 'room1', { awareness: awareness2 }),
     ])
@@ -251,17 +251,48 @@ describe.concurrent('server', () => {
       expect(doc.getArray('root').toJSON()).toEqual(['existing', 'doc'])
     })
   })
+
+  test('syncs doc after a client joins late', async () => {
+    const { makeServer, makeClient } = scenario()
+
+    makeServer()
+
+    const doc1 = new Y.Doc()
+    const doc2 = new Y.Doc()
+
+    doc1.getMap('root').set('foo', 'bar')
+
+    const client1 = makeClient(doc1)
+    const client2 = makeClient(doc2)
+
+    await waitForAllSynced([client1, client2])
+
+    await waitForExpect(() => {
+      expect(doc2.getMap('root').toJSON()).toEqual({ foo: 'bar' })
+    })
+
+    const doc3 = new Y.Doc()
+    makeClient(doc3)
+
+    await waitForExpect(() => {
+      expect(doc3.getMap('root').toJSON()).toEqual({ foo: 'bar' })
+    })
+  })
 })
 
-function waitForAllConnected(clients: WebsocketProvider[]) {
+function waitForAllSynced(clients: WebsocketProvider[]) {
   return Promise.all(
     clients.map(
       (client) =>
         new Promise<void>((resolve) =>
-          client.once('status', (ev: { status: string }) => {
+          client.once('sync', (isSynced: boolean) => {
+            expect(client.wsconnected).toBe(true)
+
             // wait some ms to make sure the doc modifications in test are sent in a secondary message,
             // not during the initial sync
-            if (ev.status === 'connected') setTimeout(resolve, 10)
+            if (isSynced) {
+              setTimeout(resolve, 50)
+            }
           }),
         ),
     ),

@@ -19,7 +19,7 @@ specifiers:
   ws: ^8.10.0
   y-protocols: ^1.0.5
   y-websocket: ^1.4.5
-  yjs: ^13.5.42
+  yjs: ^14.0.0-0
 
 devDependencies:
   '@types/node': 18.11.5
@@ -39,8 +39,8 @@ devDependencies:
   wait-for-expect: 3.0.2
   ws: 8.10.0
   y-protocols: 1.0.5
-  y-websocket: 1.4.5_yjs@13.5.42
-  yjs: 13.5.42
+  y-websocket: 1.4.5_yjs@14.0.0-0
+  yjs: 14.0.0-0
 
 packages:
 
@@ -2603,7 +2603,7 @@ packages:
     dev: true
     optional: true
 
-  /y-leveldb/0.1.1_yjs@13.5.42:
+  /y-leveldb/0.1.1_yjs@14.0.0-0:
     resolution: {integrity: sha512-L8Q0MQmxCQ0qWIOuPzLbWn95TNhrCI7M6LaHnilU4I2IX08e4Dmfg5Tgy4JZ3tnl2aiuZyDOJplHl/msIB/IsA==}
     requiresBuild: true
     peerDependencies:
@@ -2611,7 +2611,7 @@ packages:
     dependencies:
       level: 6.0.1
       lib0: 0.2.52
-      yjs: 13.5.42
+      yjs: 14.0.0-0
     dev: true
     optional: true
 
@@ -2621,7 +2621,7 @@ packages:
       lib0: 0.2.52
     dev: true
 
-  /y-websocket/1.4.5_yjs@13.5.42:
+  /y-websocket/1.4.5_yjs@14.0.0-0:
     resolution: {integrity: sha512-5d9LTSy0GQKqSd/FKRo5DMBlsiTlCipbKcIgPLlno+5xHtfT8bm3uQdcbY9JvLfckojilLZWauXJu0vzDZX05w==}
     hasBin: true
     peerDependencies:
@@ -2630,10 +2630,10 @@ packages:
       lib0: 0.2.52
       lodash.debounce: 4.0.8
       y-protocols: 1.0.5
-      yjs: 13.5.42
+      yjs: 14.0.0-0
     optionalDependencies:
       ws: 6.2.2
-      y-leveldb: 0.1.1_yjs@13.5.42
+      y-leveldb: 0.1.1_yjs@14.0.0-0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -2666,8 +2666,9 @@ packages:
       yargs-parser: 20.2.9
     dev: true
 
-  /yjs/13.5.42:
-    resolution: {integrity: sha512-3aYBPeUSBUCs/vCOYolbyzhsQ6IDm1DeJgfhHVbW+6kq8YhWjkk2SUhYtBxd3lZPNsqmJGzYH9shKINhSVbEzw==}
+  /yjs/14.0.0-0:
+    resolution: {integrity: sha512-LVjsQh4EaUDxKZ5r4jy0FJ4D2fL8qSoJvOyZTFCKk2XZ6by57w79B2QxWvmtTEn3mQPjKxDdL3PUXuqhu55dmA==}
+    requiresBuild: true
     dependencies:
       lib0: 0.2.52
     dev: true
