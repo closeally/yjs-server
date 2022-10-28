@@ -40,7 +40,7 @@ export const createYjsServer = ({
 
   const handleConnection = async (
     conn: IWebSocket,
-    IRequest: IRequest,
+    req: IRequest,
     shouldConnect = alwaysConnect,
   ) => {
     const bufferedMessages = new Array<ArrayBuffer>()
@@ -53,7 +53,7 @@ export const createYjsServer = ({
 
       if (conn.readyState === CLOSING || conn.readyState === CLOSED) {
         logger.warn(
-          { IRequest, readyState: conn },
+          { req, readyState: conn },
           'received a socket that is already closing or closed',
         )
         return
@@ -67,24 +67,24 @@ export const createYjsServer = ({
         bufferedMessages,
         maxBufferedBytesBeforeConnect,
         shouldConnect,
-        IRequest,
+        req,
       )
 
       // shouldConnect parent should close the connection with the appropriate error code,
       // or we closed it due to a maxBufferedBytesBeforeConnect limit
       if (!shouldContinue) return
     } catch (err) {
-      logger.error({ IRequest, err }, 'error handling new connection')
+      logger.error({ req, err }, 'error handling new connection')
       conn.terminate()
       return
     }
 
     try {
-      const docName = docNameFromRequest(IRequest)
+      const docName = docNameFromRequest(req)
 
       if (!docName) {
         conn.close(CloseReason.UNSUPPORTED)
-        logger.error({ IRequest }, 'invalid doc name')
+        logger.error({ req }, 'invalid doc name')
         return
       }
 
@@ -95,7 +95,7 @@ export const createYjsServer = ({
         bufferedMessages,
         maxBufferedBytes,
         room.loadPromise,
-        IRequest,
+        req,
       )
 
       // room failed to load or the socket was closed
@@ -109,7 +109,7 @@ export const createYjsServer = ({
       // replay buffered messages
       bufferedMessages.forEach((data) => handleMessage({ data }))
     } catch (err) {
-      logger.error({ IRequest, err }, 'error setting up new connection')
+      logger.error({ req, err }, 'error setting up new connection')
       conn.close(CloseReason.INTERNAL_ERROR)
     }
   }
@@ -119,7 +119,7 @@ export const createYjsServer = ({
     messages: ArrayBuffer[],
     maxSize: number,
     whenReady: Promise<boolean>,
-    IRequest: IRequest,
+    req: IRequest,
   ) => {
     let size = messages.reduce((acc, msg) => acc + msg.byteLength, 0)
 
@@ -132,11 +132,11 @@ export const createYjsServer = ({
         if (size <= maxSize) {
           messages.push(data)
         } else {
-          logger.warn({ IRequest, size, maxSize }, 'message buffer exceeded maxSize')
+          logger.warn({ req, size, maxSize }, 'message buffer exceeded maxSize')
           conn.terminate()
         }
       } else {
-        logger.warn({ IRequest }, 'received a non-arraybuffer message')
+        logger.warn({ req }, 'received a non-arraybuffer message')
         conn.terminate()
       }
     }

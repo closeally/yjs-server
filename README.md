@@ -149,7 +149,7 @@ const yjss = createYjsServer({
   docStorage: {
     loadDoc: async (docName, doc) => {
       const persistedDocBytes = await client.getDoc(docName)
-      if (persistedDoc) Y.applyUpdate(doc, persistedDoc)
+      if (persistedDocBytes) Y.applyUpdate(doc, persistedDocBytes)
     },
     storeDoc: async (docName, doc) => {
       await client.setDoc(docName, Y.encodeStateAsUpdate(doc))

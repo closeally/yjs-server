@@ -371,6 +371,9 @@ describe.concurrent('server', () => {
     })
 
     const client1 = makeClient(new Y.Doc())
+    client1.on('connection-close', () => {
+      client1.shouldConnect = false
+    })
 
     await waitForExpect(() => {
       expect(client1.synced).toBe(true)
