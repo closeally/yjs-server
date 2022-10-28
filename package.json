@@ -22,8 +22,9 @@
   "bugs": {
     "url": "https://github.com/closeally/yjs-server/issues"
   },
-  "type": "module",
   "sideEffects": false,
+  "type": "module",
+  "main": "dist/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": "./dist/index.js"
