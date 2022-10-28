@@ -40,15 +40,22 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
   const alwaysConnect = Promise.resolve(true)
 
   const handleConnection = async (conn: WS, req: Req, shouldConnect = alwaysConnect) => {
-    if (isClosed) return
-
-    if (conn.readyState === CLOSING || conn.readyState === CLOSED) {
-      logger.warn({ req, readyState: conn }, 'received a socket that is already closing or closed')
-      return
-    }
-
     const bufferedMessages = new Array<ArrayBuffer>()
+
     try {
+      if (isClosed) {
+        conn.close(CloseReason.NORMAL)
+        return
+      }
+
+      if (conn.readyState === CLOSING || conn.readyState === CLOSED) {
+        logger.warn(
+          { req, readyState: conn },
+          'received a socket that is already closing or closed',
+        )
+        return
+      }
+
       conn.binaryType = 'arraybuffer'
 
       // note: no async code should happen between bufferUntilReady calls, or we may lose messages
@@ -97,7 +104,7 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
       // replay buffered messages
       bufferedMessages.forEach((data) => handleMessage({ data }))
     } catch (err) {
-      logger.error({ req, err }, 'error handling new connection')
+      logger.error({ req, err }, 'error setting up new connection')
       conn.close(CloseReason.INTERNAL_ERROR)
     }
   }
@@ -214,7 +221,11 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
   }
 
   return {
-    handleConnection,
+    handleConnection(...args) {
+      // don't expose the promise in the public API for now
+      // this promise should never throw
+      void handleConnection(...args)
+    },
     close,
   }
 }

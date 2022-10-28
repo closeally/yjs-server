@@ -1,81 +1,21 @@
-import { afterAll, describe, expect, test, vi } from 'vitest'
-import { WebSocket, WebSocketServer } from 'ws'
-import type { CreateServerOptions } from '../src/index.js'
-import { createServer } from '../src/index.js'
-import { WebsocketProvider } from 'y-websocket'
+import { describe, expect, test, vi } from 'vitest'
 import * as Y from 'yjs'
-import type * as awarenessProtocol from 'y-protocols/awareness'
-import { waitForExpect } from './test-utils.js'
+import { waitForAllDisconnected, waitForAllSynced, waitForExpect } from './test-utils.js'
 import { Awareness } from 'y-protocols/awareness.js'
+import { makeLogger, wsScenario } from './fixtures.js'
+import { CloseReason } from '../src/types.js'
+import { createServer } from '../src/index.js'
 
-let PORT_START = 9000
-
-const getPort = () => PORT_START++
-
-const startedServers = new Set<WebSocketServer>()
-
-afterAll(() => {
-  startedServers.forEach((wss) => wss.close())
-})
-
-function scenario() {
-  const port = getPort()
-  const wss = new WebSocketServer({ port })
-  const serverUrl = `ws://localhost:${port}`
-
-  startedServers.add(wss)
-
-  const logger = {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-  }
-
-  const makeServer = (opts?: Partial<CreateServerOptions>) => {
-    const server = createServer({ logger, createDoc: () => new Y.Doc(), ...opts })
-
-    wss.on('connection', (ws, req) => {
-      void server.handleConnection(ws, req)
-    })
-
-    return server
-  }
-
-  const makeClient = (
-    doc: Y.Doc,
-    roomName = 'test',
-    opts?: {
-      connect?: boolean
-      awareness?: awarenessProtocol.Awareness
-      params?: Record<string, string>
-      WebSocketPolyfill?: typeof WebSocket
-      resyncInterval?: number
-      maxBackoffTime?: number
-      disableBc?: boolean
-    },
-  ) =>
-    new WebsocketProvider(serverUrl, roomName, doc, {
-      WebSocketPolyfill: WebSocket,
-      disableBc: true,
-      ...opts,
-    })
-
-  return {
-    port,
-    wss,
-    serverUrl,
-    logger,
-    makeServer,
-    makeClient,
-  }
-}
+// afterAll(() => {
+//   startedServers.forEach((wss) => wss.close())
+// })
 
 describe.concurrent('server', () => {
   test('y-websocket connects', () =>
     new Promise<void>((done) => {
-      const { makeServer, makeClient } = scenario()
+      const { connectYjsServer, makeClient } = wsScenario()
 
-      makeServer()
+      connectYjsServer()
 
       const doc = new Y.Doc()
 
@@ -88,9 +28,9 @@ describe.concurrent('server', () => {
     }))
 
   test('connect after disconnect', async () => {
-    const { makeServer, makeClient } = scenario()
+    const { connectYjsServer, makeClient } = wsScenario()
 
-    makeServer()
+    connectYjsServer()
 
     const doc = new Y.Doc()
 
@@ -113,21 +53,25 @@ describe.concurrent('server', () => {
   })
 
   test('rejects invalid room name', async () => {
-    const { makeServer, makeClient, logger } = scenario()
+    const { connectYjsServer, makeClient } = wsScenario()
 
-    makeServer({ docNameFromRequest: (req) => (req.url?.includes('invalid') ? undefined : 'ok') })
+    const logError = vi.fn()
+    connectYjsServer({
+      logger: makeLogger({ error: logError }),
+      docNameFromRequest: (req) => (req.url?.includes('invalid') ? undefined : 'ok'),
+    })
 
     const client = makeClient(new Y.Doc(), 'invalid')
 
     await waitForExpect(() => {
       expect(client.wsconnected).toBe(false)
-      expect(logger.error).toHaveBeenCalled()
+      expect(logError).toHaveBeenCalledOnce()
     })
   })
 
-  test('syncs doc', async () => {
-    const { makeServer, makeClient } = scenario()
-    makeServer()
+  test('syncs docs', async () => {
+    const { connectYjsServer, makeClient } = wsScenario()
+    connectYjsServer()
 
     const doc1 = new Y.Doc()
     const doc2 = new Y.Doc()
@@ -139,12 +83,18 @@ describe.concurrent('server', () => {
     await waitForExpect(() => {
       expect(doc2.getMap('root').toJSON()).toEqual({ foo: 'bar' })
     })
+
+    doc2.getMap('root').set('foo2', 'bar2')
+
+    await waitForExpect(() => {
+      expect(doc1.getMap('root').toJSON()).toEqual({ foo: 'bar', foo2: 'bar2' })
+    })
   })
 
   test('syncs separate room names', async () => {
-    const { makeServer, makeClient } = scenario()
+    const { connectYjsServer, makeClient } = wsScenario()
 
-    makeServer()
+    connectYjsServer()
 
     const doc1 = new Y.Doc()
     const doc2 = new Y.Doc()
@@ -170,9 +120,9 @@ describe.concurrent('server', () => {
   })
 
   test('syncs awareness', async () => {
-    const { makeServer, makeClient } = scenario()
+    const { connectYjsServer, makeClient } = wsScenario()
 
-    makeServer()
+    connectYjsServer()
 
     const doc1 = new Y.Doc()
     const doc2 = new Y.Doc()
@@ -198,67 +148,10 @@ describe.concurrent('server', () => {
     })
   })
 
-  test('loads existing doc after a delay', async () => {
-    const { makeServer, makeClient } = scenario()
-
-    makeServer({
-      docStorage: {
-        loadDoc(name, doc) {
-          expect(name).toBe('room_123')
-
-          return new Promise((resolve) =>
-            setTimeout(() => {
-              const existingDoc = new Y.Doc()
-              existingDoc.getArray('root').push(['existing', 'doc'])
-
-              Y.applyUpdate(doc, Y.encodeStateAsUpdate(existingDoc))
-
-              expect(doc.getArray('root').toJSON()).toEqual(['existing', 'doc'])
-
-              resolve()
-            }, 100),
-          )
-        },
-        storeDoc: vi.fn(),
-      },
-    })
-
-    const doc = new Y.Doc()
-    makeClient(doc, 'room_123')
-
-    await waitForExpect(() => {
-      expect(doc.getArray('root').toJSON()).toEqual(['existing', 'doc'])
-    })
-  })
-
-  test('loads existing doc fast', async () => {
-    const { makeServer, makeClient } = scenario()
-
-    makeServer({
-      docStorage: {
-        loadDoc(name, doc) {
-          const existingDoc = new Y.Doc()
-          existingDoc.getArray('root').push(['existing', 'doc'])
-
-          Y.applyUpdate(doc, Y.encodeStateAsUpdate(existingDoc))
-          return Promise.resolve()
-        },
-        storeDoc: vi.fn(),
-      },
-    })
-
-    const doc = new Y.Doc()
-    makeClient(doc, 'room_123')
-
-    await waitForExpect(() => {
-      expect(doc.getArray('root').toJSON()).toEqual(['existing', 'doc'])
-    })
-  })
-
   test('syncs doc after a client joins late', async () => {
-    const { makeServer, makeClient } = scenario()
+    const { connectYjsServer, makeClient } = wsScenario()
 
-    makeServer()
+    connectYjsServer()
 
     const doc1 = new Y.Doc()
     const doc2 = new Y.Doc()
@@ -281,23 +174,76 @@ describe.concurrent('server', () => {
       expect(doc3.getMap('root').toJSON()).toEqual({ foo: 'bar' })
     })
   })
+
+  test(`closes existing connection and reject new ones`, async () => {
+    const { connectYjsServer, makeClient } = wsScenario()
+
+    const server = connectYjsServer()
+
+    const client1 = makeClient(new Y.Doc())
+
+    await waitForAllSynced([client1])
+
+    server.close(CloseReason.NORMAL)
+
+    await waitForExpect(() => {
+      expect(client1.wsconnected).toBe(false)
+    })
+
+    const client2 = makeClient(new Y.Doc())
+
+    await waitForAllDisconnected([client2])
+
+    expect(client2.wsconnected).toBe(false)
+
+    // y-websocket will attempt an infinity reconnect loop, that's just how it is build
+  })
+
+  test(`ignores closed websockets`, async () => {
+    const { wss, makeClient } = wsScenario()
+
+    const warn = vi.fn()
+    const server = createServer({
+      createDoc: () => new Y.Doc(),
+      logger: makeLogger({ warn }),
+    })
+
+    wss.once('connection', (ws, req) => {
+      server.handleConnection(ws, req)
+    })
+
+    const doc = new Y.Doc()
+    doc.getMap('root').set('foo', 'bar')
+    const client = makeClient(doc)
+
+    await waitForAllSynced([client])
+
+    const nextConnectionEvent = new Promise<void>((resolve) => {
+      wss.once('connection', (ws, req) => {
+        ws.once('close', () => {
+          server.handleConnection(ws, req)
+        })
+        ws.close()
+        resolve()
+      })
+    })
+
+    const doc2 = new Y.Doc()
+    makeClient(doc2)
+
+    await nextConnectionEvent
+
+    wss.once('connection', (ws, req) => {
+      server.handleConnection(ws, req)
+    })
+
+    const doc3 = new Y.Doc()
+    makeClient(doc3)
+
+    await waitForExpect(() => {
+      expect(doc2.getMap('root').toJSON()).toEqual({})
+      expect(doc3.getMap('root').toJSON()).toEqual({ foo: 'bar' })
+      expect(warn).toHaveBeenCalledOnce()
+    })
+  })
 })
-
-function waitForAllSynced(clients: WebsocketProvider[]) {
-  return Promise.all(
-    clients.map(
-      (client) =>
-        new Promise<void>((resolve) =>
-          client.once('sync', (isSynced: boolean) => {
-            expect(client.wsconnected).toBe(true)
-
-            // wait some ms to make sure the doc modifications in test are sent in a secondary message,
-            // not during the initial sync
-            if (isSynced) {
-              setTimeout(resolve, 50)
-            }
-          }),
-        ),
-    ),
-  )
-}

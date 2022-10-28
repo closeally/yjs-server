@@ -41,8 +41,8 @@ export interface IRequest {
 export type WebsSocketData = string | Buffer | ArrayBuffer | Buffer[]
 
 export interface YjsServer<WS extends IWebSocket = IWebSocket, Req extends IRequest = IRequest> {
-  handleConnection(conn: WS, req: Req, shouldConnect?: Promise<boolean>): Promise<void>
-  close(code: number): void
+  handleConnection(conn: WS, req: Req, shouldConnect?: Promise<boolean>): void
+  close(code?: number, terminateTimeout?: number | null): void
 }
 
 export type LoadDocFn = (name: string, doc: Y.Doc) => Promise<void>

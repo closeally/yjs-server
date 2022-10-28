@@ -12,6 +12,7 @@
     "prettier"
   ],
   "rules": {
+    "@typescript-eslint/no-non-null-assertion": "off",
     "@typescript-eslint/no-explicit-any": "error",
     "@typescript-eslint/consistent-type-imports": "error",
     "@typescript-eslint/no-unsafe-call": "off",
