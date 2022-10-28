@@ -40,7 +40,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
     "dev": "pnpm build --watch",
-    "validate": "run-p lint typecheck test:run format:check",
+    "validate": "run-p lint typecheck test:run format:check build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "format:check": "prettier --check .",
