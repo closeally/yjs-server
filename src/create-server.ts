@@ -7,9 +7,8 @@ import { applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awarene
 import type { Room } from './Room.js'
 import { makeRoom } from './Room.js'
 import { keepAlive, send } from './socket-ops.js'
-import { CLOSED, CLOSING, MessageType } from './internal.js'
+import { CLOSED, CLOSING, invariant, MessageType } from './internal.js'
 import type { Doc } from 'yjs'
-import invariant from 'tiny-invariant'
 
 export const defaultDocNameFromRequest = <Req extends IRequest>(req: Req) => {
   return req.url?.slice(1).split('?')[0]
@@ -33,8 +32,8 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
   docNameFromRequest = defaultDocNameFromRequest,
   rooms = new Map(),
   pingTimeout = 30000,
-  maxBufferedBytesBeforeConnect = 1024 * 1024, // 1MB
-  maxBufferedBytes = 1024 * 1024 * 10, // 10 MB
+  maxBufferedBytesBeforeConnect = 1024 * 5, // 5MB
+  maxBufferedBytes = 1024 * 1024 * 100, // 100 MB
 }: CreateServerOptions): YjsServer<WS, Req> => {
   let isClosed = false
   const alwaysConnect = Promise.resolve(true)

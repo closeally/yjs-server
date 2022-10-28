@@ -1,7 +1,6 @@
 import type { IWebSocket, Logger } from './types.js'
 import { CloseReason } from './types.js'
-import invariant from 'tiny-invariant'
-import { CONNECTING, OPEN } from './internal.js'
+import { CONNECTING, invariant, OPEN } from './internal.js'
 
 export const send = (conn: IWebSocket, m: Uint8Array): void => {
   try {

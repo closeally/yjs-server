@@ -6,7 +6,7 @@ export const waitForExpect =
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
   defaultWaitForExpect as unknown as typeof import('wait-for-expect').default
 
-export function waitForAllSynced(clients: WebsocketProvider[]) {
+export function waitForSyncEvent(clients: WebsocketProvider[]) {
   return Promise.all(
     clients.map(
       (client) =>
@@ -14,8 +14,6 @@ export function waitForAllSynced(clients: WebsocketProvider[]) {
           client.once('sync', (isSynced: boolean) => {
             expect(client.wsconnected).toBe(true)
 
-            // wait some ms to make sure the doc modifications in test are sent in a secondary message,
-            // not during the initial sync
             if (isSynced) {
               setTimeout(resolve, 50)
             }

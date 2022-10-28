@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 import * as Y from 'yjs'
-import { waitForAllSynced, waitForDisconnectEvent, waitForExpect } from './test-utils.js'
+import { waitForDisconnectEvent, waitForExpect, waitForSyncEvent } from './test-utils.js'
 import { Awareness } from 'y-protocols/awareness.js'
 import { makeLogger, wsScenario } from './fixtures.js'
 import { CloseReason } from '../src/types.js'
@@ -76,7 +76,7 @@ describe.concurrent('server', () => {
     const doc1 = new Y.Doc()
     const doc2 = new Y.Doc()
 
-    await waitForAllSynced([makeClient(doc1), makeClient(doc2)])
+    await waitForSyncEvent([makeClient(doc1), makeClient(doc2)])
 
     doc1.getMap('root').set('foo', 'bar')
 
@@ -101,7 +101,7 @@ describe.concurrent('server', () => {
     const doc3 = new Y.Doc()
     const doc4 = new Y.Doc()
 
-    await waitForAllSynced([
+    await waitForSyncEvent([
       makeClient(doc1, 'room1'),
       makeClient(doc2, 'room1'),
       makeClient(doc3, 'room2'),
@@ -130,7 +130,7 @@ describe.concurrent('server', () => {
     const awareness1 = new Awareness(doc1)
     const awareness2 = new Awareness(doc2)
 
-    await waitForAllSynced([
+    await waitForSyncEvent([
       makeClient(doc1, 'room1', { awareness: awareness1 }),
       makeClient(doc2, 'room1', { awareness: awareness2 }),
     ])
@@ -190,7 +190,7 @@ describe.concurrent('server', () => {
     const client1 = makeClient(doc1)
     const client2 = makeClient(doc2)
 
-    await waitForAllSynced([client1, client2])
+    await waitForSyncEvent([client1, client2])
 
     await waitForExpect(() => {
       expect(doc2.getMap('root').toJSON()).toEqual({ foo: 'bar' })
@@ -221,7 +221,7 @@ describe.concurrent('server', () => {
     doc.getMap('root').set('foo', 'bar')
     const client = makeClient(doc)
 
-    await waitForAllSynced([client])
+    await waitForSyncEvent([client])
 
     const nextConnectionEvent = new Promise<void>((resolve) => {
       wss.once('connection', (ws, req) => {
@@ -337,7 +337,7 @@ describe.concurrent('server', () => {
 
     const client1 = makeClient(new Y.Doc())
 
-    await waitForAllSynced([client1])
+    await waitForSyncEvent([client1])
 
     await waitForExpect(() => {
       expect(wss.clients.size).toBe(1)

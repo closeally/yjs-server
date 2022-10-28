@@ -51,7 +51,7 @@ describe.concurrent('server shouldConnect', () => {
     })
   })
 
-  test('does not closes socket if shouldConnect returns false', async () => {
+  test('does not closes socket if shouldConnect resolves false', async () => {
     const { wss, makeYjsServer, makeClient } = wsScenario()
 
     const CLOSE_CODE = 4001
