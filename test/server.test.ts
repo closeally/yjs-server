@@ -6,10 +6,6 @@ import { makeLogger, wsScenario } from './fixtures.js'
 import { CloseReason } from '../src/types.js'
 import { createYjsServer } from '../src/index.js'
 
-// afterAll(() => {
-//   startedServers.forEach((wss) => wss.close())
-// })
-
 describe.concurrent('server', () => {
   test('client connects', () =>
     new Promise<void>((done) => {
