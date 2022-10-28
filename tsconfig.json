@@ -18,7 +18,7 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "lib": ["ES2020"]
+    "lib": ["ES2022"]
   },
   "include": ["**/*.ts"]
 }

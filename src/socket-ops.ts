@@ -1,15 +1,11 @@
 import type { IWebSocket, Logger } from './types.js'
 import { CloseReason } from './types.js'
-
-const CONNECTING = 0
-const OPEN = 1
+import { CONNECTING, invariant, OPEN } from './internal.js'
 
 export const send = (conn: IWebSocket, m: Uint8Array): void => {
-  if (conn.readyState !== CONNECTING && conn.readyState !== OPEN) {
-    conn.close(CloseReason.INTERNAL_ERROR)
-  }
-
   try {
+    invariant(conn.readyState === OPEN || conn.readyState === CONNECTING, 'conn is not open')
+
     conn.send(m, (err) => {
       if (err) conn.close(CloseReason.INTERNAL_ERROR)
     })
@@ -28,12 +24,11 @@ export const keepAlive = (conn: IWebSocket, pingTimeout: number, logger: Logger)
         conn.ping()
       } else {
         clearInterval(pingInterval)
-        conn.close(CloseReason.PING_TIMEOUT)
+        conn.terminate()
       }
     } catch (err) {
       logger.error({ err }, 'error during keep alive')
-      conn.close(CloseReason.PING_TIMEOUT)
-    } finally {
+      conn.terminate()
       clearInterval(pingInterval)
     }
   }, pingTimeout)
@@ -42,7 +37,7 @@ export const keepAlive = (conn: IWebSocket, pingTimeout: number, logger: Logger)
     isAlive = true
   })
 
-  conn.on('close', () => {
+  conn.addEventListener('close', () => {
     clearInterval(pingInterval)
   })
 }
