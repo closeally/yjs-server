@@ -25,7 +25,7 @@ export function waitForAllSynced(clients: WebsocketProvider[]) {
   )
 }
 
-export function waitForAllDisconnected(clients: WebsocketProvider[], plusMS = 0) {
+export function waitForDisconnectEvent(clients: WebsocketProvider[], plusMS = 0) {
   return Promise.all(
     clients.map(
       (client) =>

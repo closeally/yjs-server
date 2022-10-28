@@ -15,7 +15,7 @@ export const startedServers = new Set<WebSocketServer>()
 
 export function wsScenario() {
   const port = getPort()
-  const wss = new WebSocketServer({ port })
+  const wss = new WebSocketServer({ port, clientTracking: true })
   const serverUrl = `ws://localhost:${port}`
 
   startedServers.add(wss)
@@ -28,7 +28,7 @@ export function wsScenario() {
     })
   }
 
-  const connectYjsServer = (opts?: Partial<CreateServerOptions>) => {
+  const makeConnectedYjsServer = (opts?: Partial<CreateServerOptions>) => {
     const server = makeYjsServer(opts)
 
     wss.on('connection', (ws, req) => {
@@ -62,7 +62,7 @@ export function wsScenario() {
     wss,
     serverUrl,
     makeYjsServer,
-    connectYjsServer,
+    makeConnectedYjsServer,
     makeClient,
   }
 }

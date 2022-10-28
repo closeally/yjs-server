@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from 'vitest'
 import * as Y from 'yjs'
-import { waitForAllDisconnected, waitForExpect } from './test-utils.js'
+import { waitForDisconnectEvent, waitForExpect } from './test-utils.js'
 import { makeLogger, wsScenario } from './fixtures.js'
 
 describe.concurrent('server storage', () => {
   test('loads existing doc after a delay', async () => {
-    const { connectYjsServer, makeClient } = wsScenario()
+    const { makeConnectedYjsServer, makeClient } = wsScenario()
 
-    connectYjsServer({
+    makeConnectedYjsServer({
       docStorage: {
         loadDoc(name, doc) {
           expect(name).toBe('room_123')
@@ -37,9 +37,9 @@ describe.concurrent('server storage', () => {
   })
 
   test('loads existing doc fast', async () => {
-    const { connectYjsServer, makeClient } = wsScenario()
+    const { makeConnectedYjsServer, makeClient } = wsScenario()
 
-    connectYjsServer({
+    makeConnectedYjsServer({
       docStorage: {
         loadDoc(name, doc) {
           const existingDoc = new Y.Doc()
@@ -60,13 +60,13 @@ describe.concurrent('server storage', () => {
   })
 
   test('disconnect clients if room fails to load', async () => {
-    const { connectYjsServer, makeClient } = wsScenario()
+    const { makeConnectedYjsServer, makeClient } = wsScenario()
 
     const loadError = new Error('failed to load')
 
     const logError = vi.fn()
     const roomFailsToLoad = new Promise((resolve) => {
-      connectYjsServer({
+      makeConnectedYjsServer({
         logger: makeLogger({ error: logError }),
         docStorage: {
           loadDoc() {
@@ -101,11 +101,11 @@ describe.concurrent('server storage', () => {
   })
 
   test('stores doc after last client disconnects', async () => {
-    const { connectYjsServer, makeClient } = wsScenario()
+    const { makeConnectedYjsServer, makeClient } = wsScenario()
 
     const storeDoc = vi.fn(() => Promise.resolve())
 
-    connectYjsServer({
+    makeConnectedYjsServer({
       docStorage: {
         loadDoc: vi.fn(() => Promise.resolve()),
         storeDoc,
@@ -125,13 +125,13 @@ describe.concurrent('server storage', () => {
 
     client1.disconnect()
 
-    await waitForAllDisconnected([client1], 50)
+    await waitForDisconnectEvent([client1], 50)
 
     expect(storeDoc).not.toHaveBeenCalled()
 
     client2.disconnect()
 
-    await waitForAllDisconnected([client2], 50)
+    await waitForDisconnectEvent([client2], 50)
 
     expect(storeDoc).toHaveBeenCalledOnce()
     expect(storeDoc).toHaveBeenCalledWith('room_123', expect.any(Y.Doc))

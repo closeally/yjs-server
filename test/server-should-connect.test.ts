@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest'
-import { wsScenario } from './fixtures.js'
+import { describe, expect, test, vi } from 'vitest'
+import { makeLogger, wsScenario } from './fixtures.js'
 import * as Y from 'yjs'
 import { waitForExpect } from './test-utils.js'
 import { OPEN } from '../src/internal.js'
@@ -165,6 +165,119 @@ describe.concurrent('server shouldConnect', () => {
       expect(doc1.getMap('root').toJSON()).toEqual({})
       expect(doc2.getMap('root').toJSON()).toEqual({})
       expect(doc3.getMap('root').toJSON()).toEqual({})
+    })
+  })
+
+  test('terminates connection if max size is exceeded', async () => {
+    const { wss, makeYjsServer, makeClient } = wsScenario()
+
+    const warn = vi.fn()
+    const server = makeYjsServer({
+      maxBufferedBytesBeforeConnect: 1024,
+      logger: makeLogger({ warn }),
+    })
+
+    wss.on('connection', (conn, req) => {
+      server.handleConnection(
+        conn,
+        req,
+        new Promise(() => {
+          // never resolve
+        }),
+      )
+    })
+
+    const doc = new Y.Doc()
+    const client = makeClient(doc)
+
+    await waitForExpect(() => {
+      expect(client.wsconnected).toBe(true)
+    })
+
+    doc.getMap('root').set('heavy', new Array(1024).fill('a'))
+    doc.getMap('root').set('heavy2', new Array(1024).fill('a'))
+
+    await waitForExpect(() => {
+      expect(client.wsconnected).toBe(false)
+      expect(warn).toHaveBeenCalledOnce()
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({}),
+        expect.stringMatching(/message buffer exceeded/),
+      )
+    })
+  })
+
+  test('terminates connection if shouldConnect rejects', async () => {
+    const { wss, makeYjsServer, makeClient } = wsScenario()
+
+    const logError = vi.fn()
+    const server = makeYjsServer({
+      logger: makeLogger({ error: logError }),
+    })
+
+    const err = new Error('something happened')
+    wss.on('connection', (conn, req) => {
+      server.handleConnection(
+        conn,
+        req,
+        new Promise((resolve, reject) => {
+          setTimeout(() => {
+            reject(err)
+          }, 50)
+        }),
+      )
+    })
+
+    const client = makeClient(new Y.Doc())
+
+    client.on('connection-close', () => {
+      // currently, y-websocket client will infinitely retry without backoff during the 50ms window above
+      client.shouldConnect = false
+    })
+
+    await waitForExpect(() => {
+      expect(client.wsconnected).toBe(false)
+      expect(logError).toHaveBeenCalledOnce()
+      expect(logError).toHaveBeenCalledWith(
+        expect.objectContaining({ err }),
+        expect.stringMatching(/error handling new connection/),
+      )
+    })
+  })
+
+  test('terminates connection on string message shouldConnect is pending', async () => {
+    const { wss, makeYjsServer, makeClient } = wsScenario()
+
+    const warn = vi.fn()
+    const server = makeYjsServer({
+      logger: makeLogger({ warn: warn }),
+    })
+
+    wss.on('connection', (conn, req) => {
+      server.handleConnection(
+        conn,
+        req,
+        new Promise(() => {
+          // never resolve
+        }),
+      )
+    })
+
+    const client = makeClient(new Y.Doc())
+
+    await waitForExpect(() => {
+      expect(client.wsconnected).toBe(true)
+    })
+
+    client.ws.send('bad input')
+
+    await waitForExpect(() => {
+      expect(client.wsconnected).toBe(false)
+      expect(warn).toHaveBeenCalledOnce()
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({}),
+        expect.stringMatching(/received a non-arraybuffer message/),
+      )
     })
   })
 })

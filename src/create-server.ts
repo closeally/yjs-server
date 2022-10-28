@@ -1,4 +1,3 @@
-import { YjsServerError } from './error.js'
 import type { DocStorage, IRequest, IWebSocket, Logger, MessageEvent, YjsServer } from './types.js'
 import { CloseReason } from './types.js'
 import * as encoding from 'lib0/encoding'
@@ -10,6 +9,7 @@ import { makeRoom } from './Room.js'
 import { keepAlive, send } from './socket-ops.js'
 import { CLOSED, CLOSING, MessageType } from './internal.js'
 import type { Doc } from 'yjs'
+import invariant from 'tiny-invariant'
 
 export const defaultDocNameFromRequest = <Req extends IRequest>(req: Req) => {
   return req.url?.slice(1).split('?')[0]
@@ -33,8 +33,8 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
   docNameFromRequest = defaultDocNameFromRequest,
   rooms = new Map(),
   pingTimeout = 30000,
-  maxBufferedBytesBeforeConnect = 1024 * 10,
-  maxBufferedBytes = 1024 * 100,
+  maxBufferedBytesBeforeConnect = 1024 * 1024, // 1MB
+  maxBufferedBytes = 1024 * 1024 * 10, // 10 MB
 }: CreateServerOptions): YjsServer<WS, Req> => {
   let isClosed = false
   const alwaysConnect = Promise.resolve(true)
@@ -67,11 +67,13 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
         req,
       )
 
-      // shouldConnect parent should close the connection with the appropriate error code
+      // shouldConnect parent should close the connection with the appropriate error code,
+      // or we closed it due to a maxBufferedBytesBeforeConnect limit
       if (!shouldContinue) return
     } catch (err) {
       logger.error({ req, err }, 'error handling new connection')
       conn.terminate()
+      return
     }
 
     try {
@@ -119,6 +121,8 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
     let size = messages.reduce((acc, msg) => acc + msg.byteLength, 0)
 
     const onMessage = ({ data }: MessageEvent) => {
+      if (conn.readyState === CLOSING || conn.readyState === CLOSED) return
+
       if (data instanceof ArrayBuffer) {
         size += data.byteLength
 
@@ -137,7 +141,10 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
 
     let removeCloseListener: (() => void) | undefined
     const connectionClosed = new Promise<false>((resolve) => {
-      const onClose = () => resolve(false)
+      const onClose = () => {
+        messages.length = 0
+        resolve(false)
+      }
       conn.addEventListener('close', onClose)
       removeCloseListener = () => conn.removeEventListener('close', onClose)
     })
@@ -151,6 +158,7 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
   }
 
   const setupNewConnection = (room: Room, conn: WS) => {
+    invariant(conn.readyState === 1, 'socket should be open')
     room.addConnection(conn)
 
     conn.addEventListener('close', () => {
@@ -159,7 +167,14 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
 
     const handleMessage = ({ data }: MessageEvent) => {
       try {
-        handleMessageImpl(conn, room, new Uint8Array(data as ArrayBuffer))
+        if (conn.readyState === CLOSING || conn.readyState === CLOSED) return
+
+        if (data instanceof ArrayBuffer) {
+          handleMessageImpl(conn, room, new Uint8Array(data))
+        } else {
+          logger.error({ conn, dataTye: typeof data }, 'received a non-arraybuffer message')
+          conn.close(CloseReason.UNSUPPORTED)
+        }
       } catch (err) {
         logger.error({ err }, 'error handling message')
         conn.close(CloseReason.UNSUPPORTED)
@@ -274,6 +289,6 @@ const handleMessageImpl = (conn: IWebSocket, doc: Room, message: Uint8Array) => 
     }
 
     default:
-      throw new YjsServerError('unknown message type')
+      throw new Error('unsupported message type')
   }
 }
