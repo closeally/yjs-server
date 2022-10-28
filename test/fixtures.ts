@@ -1,7 +1,7 @@
 import { WebSocket, WebSocketServer } from 'ws'
 import { vi } from 'vitest'
-import type { CreateServerOptions } from '../src/index.js'
-import { createServer } from '../src/index.js'
+import type { CreateYjsServerOptions } from '../src/index.js'
+import { createYjsServer } from '../src/index.js'
 import * as Y from 'yjs'
 import type * as awarenessProtocol from 'y-protocols/awareness'
 import { WebsocketProvider } from 'y-websocket'
@@ -20,15 +20,15 @@ export function wsScenario() {
 
   startedServers.add(wss)
 
-  const makeYjsServer = (opts?: Partial<CreateServerOptions>) => {
-    return createServer({
+  const makeYjsServer = (opts?: Partial<CreateYjsServerOptions>) => {
+    return createYjsServer({
       createDoc: () => new Y.Doc(),
       ...opts,
       logger: opts?.logger ?? makeLogger(),
     })
   }
 
-  const makeConnectedYjsServer = (opts?: Partial<CreateServerOptions>) => {
+  const makeConnectedYjsServer = (opts?: Partial<CreateYjsServerOptions>) => {
     const server = makeYjsServer(opts)
 
     wss.on('connection', (ws, req) => {

@@ -10,35 +10,39 @@ import { keepAlive, send } from './socket-ops.js'
 import { CLOSED, CLOSING, invariant, MessageType } from './internal.js'
 import type { Doc } from 'yjs'
 
-export const defaultDocNameFromRequest = <Req extends IRequest>(req: Req) => {
+export const defaultDocNameFromRequest = (req: IRequest) => {
   return req.url?.slice(1).split('?')[0]
 }
 
-export interface CreateServerOptions {
+export interface CreateYjsServerOptions {
   createDoc: () => Doc
   logger?: Logger
   docNameFromRequest?: typeof defaultDocNameFromRequest
   docStorage?: DocStorage
   rooms?: Map<string, Room>
-  pingTimeout?: number
+  pingTimeoutMs?: number
   maxBufferedBytes?: number
   maxBufferedBytesBeforeConnect?: number
 }
 
-export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRequest = IRequest>({
+export const createYjsServer = ({
   createDoc,
   docStorage,
   logger = console,
   docNameFromRequest = defaultDocNameFromRequest,
   rooms = new Map(),
-  pingTimeout = 30000,
+  pingTimeoutMs = 30000,
   maxBufferedBytesBeforeConnect = 1024 * 5, // 5MB
   maxBufferedBytes = 1024 * 1024 * 100, // 100 MB
-}: CreateServerOptions): YjsServer<WS, Req> => {
+}: CreateYjsServerOptions): YjsServer => {
   let isClosed = false
   const alwaysConnect = Promise.resolve(true)
 
-  const handleConnection = async (conn: WS, req: Req, shouldConnect = alwaysConnect) => {
+  const handleConnection = async (
+    conn: IWebSocket,
+    IRequest: IRequest,
+    shouldConnect = alwaysConnect,
+  ) => {
     const bufferedMessages = new Array<ArrayBuffer>()
 
     try {
@@ -49,7 +53,7 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
 
       if (conn.readyState === CLOSING || conn.readyState === CLOSED) {
         logger.warn(
-          { req, readyState: conn },
+          { IRequest, readyState: conn },
           'received a socket that is already closing or closed',
         )
         return
@@ -63,24 +67,24 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
         bufferedMessages,
         maxBufferedBytesBeforeConnect,
         shouldConnect,
-        req,
+        IRequest,
       )
 
       // shouldConnect parent should close the connection with the appropriate error code,
       // or we closed it due to a maxBufferedBytesBeforeConnect limit
       if (!shouldContinue) return
     } catch (err) {
-      logger.error({ req, err }, 'error handling new connection')
+      logger.error({ IRequest, err }, 'error handling new connection')
       conn.terminate()
       return
     }
 
     try {
-      const docName = docNameFromRequest(req)
+      const docName = docNameFromRequest(IRequest)
 
       if (!docName) {
         conn.close(CloseReason.UNSUPPORTED)
-        logger.error({ req }, 'invalid doc name')
+        logger.error({ IRequest }, 'invalid doc name')
         return
       }
 
@@ -91,7 +95,7 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
         bufferedMessages,
         maxBufferedBytes,
         room.loadPromise,
-        req,
+        IRequest,
       )
 
       // room failed to load or the socket was closed
@@ -105,17 +109,17 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
       // replay buffered messages
       bufferedMessages.forEach((data) => handleMessage({ data }))
     } catch (err) {
-      logger.error({ req, err }, 'error setting up new connection')
+      logger.error({ IRequest, err }, 'error setting up new connection')
       conn.close(CloseReason.INTERNAL_ERROR)
     }
   }
 
   const bufferUntilReady = async (
-    conn: WS,
+    conn: IWebSocket,
     messages: ArrayBuffer[],
     maxSize: number,
     whenReady: Promise<boolean>,
-    req: Req,
+    IRequest: IRequest,
   ) => {
     let size = messages.reduce((acc, msg) => acc + msg.byteLength, 0)
 
@@ -128,11 +132,11 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
         if (size <= maxSize) {
           messages.push(data)
         } else {
-          logger.warn({ req, size, maxSize }, 'message buffer exceeded maxSize')
+          logger.warn({ IRequest, size, maxSize }, 'message buffer exceeded maxSize')
           conn.terminate()
         }
       } else {
-        logger.warn({ req }, 'received a non-arraybuffer message')
+        logger.warn({ IRequest }, 'received a non-arraybuffer message')
         conn.terminate()
       }
     }
@@ -156,7 +160,7 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
     }
   }
 
-  const setupNewConnection = (room: Room, conn: WS) => {
+  const setupNewConnection = (room: Room, conn: IWebSocket) => {
     invariant(conn.readyState === 1, 'socket should be open')
     room.addConnection(conn)
 
@@ -181,7 +185,7 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
     }
     conn.addEventListener('message', handleMessage)
 
-    keepAlive(conn, pingTimeout, logger)
+    keepAlive(conn, pingTimeoutMs, logger)
 
     sendSyncStepOne(conn, room)
 
@@ -200,7 +204,7 @@ export const createServer = <WS extends IWebSocket = IWebSocket, Req extends IRe
     return room
   }
 
-  const handleClose = (conn: WS, room: Room): void => {
+  const handleClose = (conn: IWebSocket, room: Room): void => {
     room.removeConnection(conn)
 
     if (room.numConnections === 0) {

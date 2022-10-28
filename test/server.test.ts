@@ -4,7 +4,7 @@ import { waitForDisconnectEvent, waitForExpect, waitForSyncEvent } from './test-
 import { Awareness } from 'y-protocols/awareness.js'
 import { makeLogger, wsScenario } from './fixtures.js'
 import { CloseReason } from '../src/types.js'
-import { createServer } from '../src/index.js'
+import { createYjsServer } from '../src/index.js'
 
 // afterAll(() => {
 //   startedServers.forEach((wss) => wss.close())
@@ -208,7 +208,7 @@ describe.concurrent('server', () => {
     const { wss, makeClient } = wsScenario()
 
     const warn = vi.fn()
-    const server = createServer({
+    const server = createYjsServer({
       createDoc: () => new Y.Doc(),
       logger: makeLogger({ warn }),
     })
@@ -385,7 +385,7 @@ describe.concurrent('server', () => {
 
     expect(wss.clients.size).toBe(1)
 
-    await new Promise((resolve) => setTimeout(resolve, 55))
+    await new Promise((resolve) => setTimeout(resolve, 150))
 
     expect(wss.clients.size).toBe(0)
   })

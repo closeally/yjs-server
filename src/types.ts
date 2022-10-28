@@ -40,8 +40,8 @@ export interface IRequest {
 
 export type WebsSocketData = string | Buffer | ArrayBuffer | Buffer[]
 
-export interface YjsServer<WS extends IWebSocket = IWebSocket, Req extends IRequest = IRequest> {
-  handleConnection(conn: WS, req: Req, shouldConnect?: Promise<boolean>): void
+export interface YjsServer {
+  handleConnection(conn: IWebSocket, req: IRequest, shouldConnect?: Promise<boolean>): void
   close(code?: number, terminateTimeout?: number | null): void
 }
 
